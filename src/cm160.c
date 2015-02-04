@@ -82,8 +82,6 @@ static void process_live_data(struct record_data *rec)
       // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
       ts = *localtime(&now);
       strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
-      //printf("%s\n", buf);
-      //fprintf(fp, "%02d/%02d/%04d %02d:%03d - %.02f kW\n", 
       fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\"}", 
 	      buf, rec->year, (rec->month)+1, rec->day, rec->hour, rec->min, w);
       fclose(fp);
@@ -126,8 +124,8 @@ static void decode_frame(unsigned char *frame, struct record_data *rec)
   else {
     printf("hist");
   }
-  printf("\t%s\t%04d/%02d/%02d %02d:%02d %.2fA %.2fW %d\t",
-	 buf, rec->year, rec->month, rec->day, rec->hour, rec->min, rec->amps, rec->watts, rec->unknown);
+  printf("\t%s\t%04d/%02d/%02d %02d:%02d %.2fA %.2fW\t",
+	 buf, rec->year, rec->month, rec->day, rec->hour, rec->min, rec->amps, rec->watts);
   int i = 0;
   for (i = 0; i < 10 ; i++) {
     printf("%03d ", frame[i]);
