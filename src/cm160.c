@@ -25,6 +25,7 @@
 #include <usb.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -74,28 +75,62 @@ static void process_live_data(struct record_data *rec)
   FILE *fp =  fopen(".live", "w");
   if(fp && rec->hour!=255) // to avoid writing strange values (i.e. date 2255, hour 255:255) that sometimes I got
   {
-    fprintf(fp, "%02d/%02d/%04d %02d:%02d - %.02f kW\n", 
-            rec->day, rec->month, rec->year, rec->hour, rec->min, w);
+    time_t     now;
+    struct tm  ts;
+    char       buf[80];
+    // Get current time
+    time(&now);
+    // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
+    ts = *localtime(&now);
+    strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
+    //printf("%s\n", buf);
+    //fprintf(fp, "%02d/%02d/%04d %02d:%03d - %.02f kW\n", 
+    fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\"}", 
+            buf, rec->year, (rec->month)+1, rec->day, rec->hour, rec->min, w);
     fclose(fp);
   }
 }
 
 static void decode_frame(unsigned char *frame, struct record_data *rec)
 {
-  int volt = 230; // TODO: use the value from energy_param table (supply_voltage)
-  rec->addr = 0; // TODO: don't use an harcoded addr value for the device...
-  rec->year = frame[1]+2000;
+  //int volt = 230; // TODO: use the value from energy_param table (supply_voltage)
+  int volt =     100; // TODO: use the value from energy_param table (supply_voltage)
+  rec->addr =    0; // TODO: don't use an harcoded addr value for the device...
+  rec->year =    frame[1]+2000;
   rec->unknown = (frame[2] >> 4) & 0x0f; // upper 4bit maybe is used for something other than month
-  rec->month =   frame[2] & 0x0f;        // upper 4bit maybe is used for something other than month
-  rec->day = frame[3];
-  rec->hour = frame[4];
-  rec->min = frame[5];
-  rec->cost = (frame[6]+(frame[7]<<8))/100.0;
-  rec->amps = (frame[8]+(frame[9]<<8))*0.07; // mean intensity during one minute
-  rec->watts = rec->amps * volt; // mean power during one minute
-  rec->ah = rec->amps/60; // -> we must devide by 60 to convert into ah and wh
-  rec->wh = rec->watts/60;
+  rec->month =   frame[2] & 0x0f; // upper 4bit maybe is used for something other than month
+  rec->day =     frame[3];
+  rec->hour =    frame[4];
+  rec->min =     frame[5];
+  rec->cost =    (frame[6]+(frame[7]<<8))/100.0;
+  rec->amps =    (frame[8]+(frame[9]<<8))*0.07; // mean intensity during one minute
+  rec->watts =   rec->amps * volt; // mean power during one minute
+  rec->ah =      rec->amps/60; // -> we must devide by 60 to convert into ah and wh
+  rec->wh =      rec->watts/60;
   rec->isLiveData = (frame[0] == FRAME_ID_LIVE)? true:false;
+  //
+  time_t     now;
+  struct tm  ts;
+  char       buf[80];
+  // Get current time
+  time(&now);
+  // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
+  ts = *localtime(&now);
+  strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
+
+  if (rec->isLiveData == true) {
+    printf("live"); 
+  }
+  else {
+    printf("hist");
+  }
+  printf("\t%s\t%04d/%02d/%02d %02d:%02d %.2fA %.2fW %d\t",
+	 buf, rec->year, rec->month, rec->day, rec->hour, rec->min, rec->amps, rec->watts, rec->unknown);
+  int i = 0;
+  for (i = 0; i < 10; i++) {
+    printf("%03d ", frame[i]);
+  }
+  printf("\n");
 }
 
 // Insert history into DB worker thread
@@ -146,22 +181,18 @@ static int process_frame(int dev_id, unsigned char *frame)
   usb_dev_handle *hdev = g_devices[dev_id].hdev;
   int epout = g_devices[dev_id].epout;
 
-  if(strncmp((char *)frame, ID_MSG, 11) == 0)
-  {
+  if(strncmp((char *)frame, ID_MSG, 11) == 0) {
 //    printf("received ID MSG\n");
     data[0]=0x5A;
     usb_bulk_write(hdev, epout, (const char *)&data, sizeof(data), 1000);
   }
-  else if(strncmp((char *)frame, WAIT_MSG, 11) == 0)
-  {
+  else if(strncmp((char *)frame, WAIT_MSG, 11) == 0) {
 //    printf("received WAIT MSG\n");
     data[0]=0xA5;
     usb_bulk_write(hdev, epout, (const char *)&data, sizeof(data), 1000);
   }
-  else
-  {
-    if(frame[0] != FRAME_ID_LIVE && frame[0] != FRAME_ID_DB)
-    {
+  else {
+    if(frame[0] != FRAME_ID_LIVE && frame[0] != FRAME_ID_DB) {
       printf("data error: invalid ID 0x%x\n", frame[0]);
       for(i=0; i<11; i++)
         printf("0x%02x - ", frame[i]);
@@ -172,8 +203,7 @@ static int process_frame(int dev_id, unsigned char *frame)
     for(i=0; i<10; i++)
       checksum += frame[i];
     checksum &= 0xff;
-    if(checksum != frame[10])
-    {
+    if(checksum != frame[10]) {
       printf("data error: invalid checksum: expected 0x%x, got 0x%x\n", 
              frame[10], checksum);
       return -1;
@@ -187,14 +217,12 @@ static int process_frame(int dev_id, unsigned char *frame)
     else
       last_valid_month = rec.month;
 
-    if(frame[0]==FRAME_ID_DB)
-    {
-      if(receive_history && frame_id < HISTORY_SIZE)
-      {
+    if(frame[0]==FRAME_ID_DB) {
+      if(receive_history && frame_id < HISTORY_SIZE) {
         if(frame_id == 0)
           printf("downloading history...\n");
-        else if(frame_id%10 == 0)
-        { // print progression status
+        else if(frame_id%10 == 0) {
+	  // print progression status
           // rough estimation : we should received a month of history
           // -> 31x24x60 minute records
           printf("\r %.1f%%", min(100, 100*((double)frame_id/(31*24*60))));
@@ -203,8 +231,7 @@ static int process_frame(int dev_id, unsigned char *frame)
         // cache the history in a buffer, we will insert it in the db later.
         memcpy(history[frame_id++], frame, 11);
       }
-      else
-      {
+      else {
         db_insert_hist(&rec);
         db_update_status();
         process_live_data(&rec); // the record is not live data, but we do that to
@@ -214,8 +241,8 @@ static int process_frame(int dev_id, unsigned char *frame)
     }
     else
     {
-      if(receive_history)
-      { // When we receive the first live data, 
+      if(receive_history) {
+	// When we receive the first live data, 
         // we know that the history is totally downloaded
         printf("\rdownloading history... 100%%\n");
         fflush(stdout);
@@ -226,8 +253,8 @@ static int process_frame(int dev_id, unsigned char *frame)
       }
       
       process_live_data(&rec);
-      printf("LIVE: %02d/%02d/%04d %02d:%02d : %f W\n",
-             rec.day, rec.month, rec.year, rec.hour, rec.min, rec.watts);
+      //printf("LIVE: %02d/%02d/%04d %02d:%02d : %f W\n",
+      //       rec.day, rec.month, rec.year, rec.hour, rec.min, rec.watts);
     }
   }
   return 0;
@@ -248,16 +275,14 @@ static int io_loop(int dev_id)
   {
     memset(buffer, 0, sizeof(buffer));
     ret = usb_bulk_read(hdev, epin, (char*)buffer, sizeof(buffer), 10000);
-    if(ret < 0)
-    {
+    if(ret < 0) {
       printf("bulk_read returned %d (%s)\n", ret, usb_strerror());
       return -1;
     }
-//    printf("read %d bytes: \n", ret);
+    //printf("read %d bytes: \n", ret);
     unsigned char *bufptr = (unsigned char *)buffer;
     int nb_words = ret/11; // incomplete words are resent
-    while(nb_words--)
-    {
+    while(nb_words--) {
       memcpy(word, bufptr, 11);
       bufptr+=11;
       process_frame(dev_id, word);
@@ -274,21 +299,18 @@ static int handle_device(int dev_id)
 
   usb_detach_kernel_driver_np(hdev, 0);
   
-  if( 0 != (r = usb_set_configuration(hdev, dev->config[0].bConfigurationValue)) )
-  {
+  if( 0 != (r = usb_set_configuration(hdev, dev->config[0].bConfigurationValue)) ) {
     printf("usb_set_configuration returns %d (%s)\n", r, usb_strerror());
     return -1;
   }
 
-  if((r = usb_claim_interface(hdev, 0)) < 0)
-  {
+  if((r = usb_claim_interface(hdev, 0)) < 0) {
     printf("Interface cannot be claimed: %d\n", r);
     return r;
   }
 
   int nep = dev->config->interface->altsetting->bNumEndpoints;
-  for(i=0; i<nep; i++)
-  {
+  for(i=0; i<nep; i++) {
     int ep = dev->config->interface->altsetting->endpoint[i].bEndpointAddress;
     if(ep&(1<<7))
       g_devices[dev_id].epin = ep;
@@ -305,7 +327,7 @@ static int handle_device(int dev_id)
   r = usb_control_msg(hdev, USB_TYPE_VENDOR | USB_RECIP_INTERFACE | USB_ENDPOINT_OUT, 
                       CP210X_IFC_ENABLE, UART_DISABLE, 0, NULL, 0, 500);
   
-// read/write main loop
+  // read/write main loop
   io_loop(dev_id);
  
   usb_release_interface(hdev, 0);
