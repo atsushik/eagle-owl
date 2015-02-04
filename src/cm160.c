@@ -36,9 +36,9 @@
 #include "demonize.h"
 
 static char ID_MSG[11] = { 
-      0xA9, 0x49, 0x44, 0x54, 0x43, 0x4D, 0x56, 0x30, 0x30, 0x31, 0x01 };
+  0xA9, 0x49, 0x44, 0x54, 0x43, 0x4D, 0x56, 0x30, 0x30, 0x31, 0x01 };
 static char WAIT_MSG[11] = { 
-      0xA9, 0x49, 0x44, 0x54, 0x57, 0x41, 0x49, 0x54, 0x50, 0x43, 0x52 };
+  0xA9, 0x49, 0x44, 0x54, 0x57, 0x41, 0x49, 0x54, 0x50, 0x43, 0x52 };
 
 
 #define HISTORY_SIZE 65536 // 30 * 24 * 60 = 43200 theoric history size
@@ -63,58 +63,60 @@ static void process_live_data(struct record_data *rec)
   static double _watts = -1;
   double w = rec->watts;
 
-  if(!rec->isLiveData) // special case: update only the time
-  {
-    if(_watts == -1)
-      return;
-    w = _watts;
+  if(!rec->isLiveData) { // special case: update only the time 
+      if(_watts == -1)
+	return;
+      w = _watts;
   }
-  else
+  else {
     _watts = w;
+  }
 
   FILE *fp =  fopen(".live", "w");
-  if(fp && rec->hour!=255) // to avoid writing strange values (i.e. date 2255, hour 255:255) that sometimes I got
-  {
-    time_t     now;
-    struct tm  ts;
-    char       buf[80];
-    // Get current time
-    time(&now);
-    // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
-    ts = *localtime(&now);
-    strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
-    //printf("%s\n", buf);
-    //fprintf(fp, "%02d/%02d/%04d %02d:%03d - %.02f kW\n", 
-    fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\"}", 
-            buf, rec->year, (rec->month)+1, rec->day, rec->hour, rec->min, w);
-    fclose(fp);
-  }
+  if(fp && rec->hour!=255) { // to avoid writing strange values (i.e. date 2255, hour 255:255) that sometimes I got
+      time_t     now;
+      struct tm  ts;
+      char       buf[80];
+      // Get current time
+      time(&now);
+      // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
+      ts = *localtime(&now);
+      strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
+      //printf("%s\n", buf);
+      //fprintf(fp, "%02d/%02d/%04d %02d:%03d - %.02f kW\n", 
+      fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\"}", 
+	      buf, rec->year, (rec->month)+1, rec->day, rec->hour, rec->min, w);
+      fclose(fp);
+    }
 }
 
 static void decode_frame(unsigned char *frame, struct record_data *rec)
 {
-  //int volt = 230; // TODO: use the value from energy_param table (supply_voltage)
-  int volt =     100; // TODO: use the value from energy_param table (supply_voltage)
-  rec->addr =    0; // TODO: don't use an harcoded addr value for the device...
+  // TODO: use the value from energy_param table (supply_voltage)
+  int volt =     100;
+  // TODO: don't use an harcoded addr value for the device...
+  rec->addr =    0;
   rec->year =    frame[1]+2000;
-  rec->unknown = (frame[2] >> 4) & 0x0f; // upper 4bit maybe is used for something other than month
-  rec->month =   frame[2] & 0x0f; // upper 4bit maybe is used for something other than month
+  // upper 4bit maybe is used for something other than month
+  rec->unknown = (frame[2] >> 4) & 0x0f;
+  rec->month =   frame[2] & 0x0f;
   rec->day =     frame[3];
   rec->hour =    frame[4];
   rec->min =     frame[5];
   rec->cost =    (frame[6]+(frame[7]<<8))/100.0;
-  rec->amps =    (frame[8]+(frame[9]<<8))*0.07; // mean intensity during one minute
-  rec->watts =   rec->amps * volt; // mean power during one minute
-  rec->ah =      rec->amps/60; // -> we must devide by 60 to convert into ah and wh
+  // mean intensity during one minute
+  rec->amps =    (frame[8]+(frame[9]<<8))*0.07;
+  // mean power during one minute
+  rec->watts =   rec->amps * volt;
+  // -> we must devide by 60 to convert into ah and wh
+  rec->ah =      rec->amps/60;
   rec->wh =      rec->watts/60;
   rec->isLiveData = (frame[0] == FRAME_ID_LIVE)? true:false;
-  //
+
   time_t     now;
   struct tm  ts;
   char       buf[80];
-  // Get current time
   time(&now);
-  // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
   ts = *localtime(&now);
   strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
 
@@ -138,29 +140,21 @@ void insert_db_history(void *data)
 {
   int i;
   int num_elems = (int)data;
-  // For an unknown reason, the cm160 sometimes sends a value > 12 for month
-  // -> in that case we use the last valid month received.
-  static int last_valid_month = 0; 
   printf("insert %d elems\n", num_elems);
   printf("insert into db...\n");
   clock_t cStartClock = clock();
 
   db_begin_transaction();
   for(i=0; i<num_elems; i++)
-  {
-    unsigned char *frame = history[i];
-    struct record_data rec;
-    decode_frame(frame, &rec);
+    {
+      unsigned char *frame = history[i];
+      struct record_data rec;
+      decode_frame(frame, &rec);
 
-    if(rec.month < 0 || rec.month > 12)
-      rec.month = last_valid_month;
-    else
-      last_valid_month = rec.month;
-
-    db_insert_hist(&rec);
-    printf("\r %.1f%%", min(100, 100*((double)i/num_elems)));
-    fflush(stdout);
-  }
+      db_insert_hist(&rec);
+      printf("\r %.1f%%", min(100, 100*((double)i/num_elems)));
+      fflush(stdout);
+    }
   db_update_status();
   db_end_transaction();
 
@@ -182,12 +176,12 @@ static int process_frame(int dev_id, unsigned char *frame)
   int epout = g_devices[dev_id].epout;
 
   if(strncmp((char *)frame, ID_MSG, 11) == 0) {
-//    printf("received ID MSG\n");
+    //    printf("received ID MSG\n");
     data[0]=0x5A;
     usb_bulk_write(hdev, epout, (const char *)&data, sizeof(data), 1000);
   }
   else if(strncmp((char *)frame, WAIT_MSG, 11) == 0) {
-//    printf("received WAIT MSG\n");
+    //    printf("received WAIT MSG\n");
     data[0]=0xA5;
     usb_bulk_write(hdev, epout, (const char *)&data, sizeof(data), 1000);
   }
@@ -240,22 +234,22 @@ static int process_frame(int dev_id, unsigned char *frame)
       }
     }
     else
-    {
-      if(receive_history) {
-	// When we receive the first live data, 
-        // we know that the history is totally downloaded
-        printf("\rdownloading history... 100%%\n");
-        fflush(stdout);
-        receive_history = false;
-        // Now, insert the history into the db
-        pthread_t thread;
-        pthread_create(&thread, NULL, (void *)&insert_db_history, (void *)frame_id);
-      }
+      {
+	if(receive_history) {
+	  // When we receive the first live data, 
+	  // we know that the history is totally downloaded
+	  printf("\rdownloading history... 100%%\n");
+	  fflush(stdout);
+	  receive_history = false;
+	  // Now, insert the history into the db
+	  pthread_t thread;
+	  pthread_create(&thread, NULL, (void *)&insert_db_history, (void *)frame_id);
+	}
       
-      process_live_data(&rec);
-      //printf("LIVE: %02d/%02d/%04d %02d:%02d : %f W\n",
-      //       rec.day, rec.month, rec.year, rec.hour, rec.min, rec.watts);
-    }
+	process_live_data(&rec);
+	//printf("LIVE: %02d/%02d/%04d %02d:%02d : %f W\n",
+	//       rec.day, rec.month, rec.year, rec.hour, rec.min, rec.watts);
+      }
   }
   return 0;
 }
@@ -271,8 +265,7 @@ static int io_loop(int dev_id)
   memset(buffer, 0, sizeof(buffer));
   memset(word, 0, sizeof(word));
 
-  while(1)
-  {
+  while(1) {
     memset(buffer, 0, sizeof(buffer));
     ret = usb_bulk_read(hdev, epin, (char*)buffer, sizeof(buffer), 10000);
     if(ret < 0) {
@@ -341,8 +334,7 @@ int main(int argc, char **argv)
   if(argc>1 && (strcmp(argv[1], "-d")==0) )
     demonize(argv[0]);
 
-  while(1)
-  {
+  while(1) {
     db_open();
     dev_cnt = 0;
     receive_history = true;
@@ -351,10 +343,9 @@ int main(int argc, char **argv)
     while((dev_cnt = scan_usb()) == 0)
       sleep(2);
     printf("Found %d compatible device%s\n", dev_cnt, dev_cnt>1?"s":"");
-
+    
     // Only 1 device supported
-    if(!(g_devices[0].hdev = usb_open(g_devices[0].usb_dev)))
-    {
+    if(!(g_devices[0].hdev = usb_open(g_devices[0].usb_dev))) {
       fprintf(stderr, "failed to open device\n");
       db_close();
       break;
@@ -363,7 +354,7 @@ int main(int argc, char **argv)
     usb_close(g_devices[0].hdev);
     db_close();
   }
-
+  
   return 0;
 }
 
