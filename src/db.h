@@ -37,6 +37,7 @@ struct record_data {
   double wh;
   bool isLiveData; // Flag used to know is this record is the live conumption 
                    // or the mean consumption (for the DB)
+  int unknown;
 };
 
 int db_open(void);

@@ -1,3 +1,22 @@
+節電モニター はやわかり の名で販売されている簡易電力計のデータをUSB経由で取り出し、sqlite形式のDBに取り込むことができる。
+- http://www.amazon.co.jp/gp/product/B006CLL45Q
+- http://www.lean-energy.net/our-service
+
+使用する前に↓のようにしてlibusb−deをインストールする必要がある
+sudo apt-get install libusb-dev
+
+srcでmakeしてから↓のように実行することでsqlite3形式のDBeagleowl.db , eagleowl_stat.db()とライブ情報(.live)をカレントディレクトリにを出力する
+sudo cm160
+
+https://github.com/cornetp/eagle-owl を元に微修正を加えた。
+変更点
+* 100V電源での使用を想定(元の版では230V)
+* ライブ情報として.liveファイルに出力される情報の変更
+  - 書式をjsonに変更。左からUSBで受信した時刻、cm160から通知された時刻、cm160から通知された使用電力量。
+  -- {"timestamp":"2015/02/04 13:42:07","datetime":"2015/03/04 13:42", "consumption current[W]":"210"}
+
+==================================================================================
+
 eagle-owl version 0.9
 =====================
 

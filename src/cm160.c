@@ -93,25 +93,25 @@ static void process_live_data(struct record_data *rec)
 static void decode_frame(unsigned char *frame, struct record_data *rec)
 {
   // TODO: use the value from energy_param table (supply_voltage)
-  int volt =     100;
+  int volt        = 100;
   // TODO: don't use an harcoded addr value for the device...
-  rec->addr =    0;
-  rec->year =    frame[1]+2000;
-  // upper 4bit maybe is used for something other than month
-  rec->unknown = (frame[2] >> 4) & 0x0f;
-  rec->month =   frame[2] & 0x0f;
-  rec->day =     frame[3];
-  rec->hour =    frame[4];
-  rec->min =     frame[5];
-  rec->cost =    (frame[6]+(frame[7]<<8))/100.0;
-  // mean intensity during one minute
-  rec->amps =    (frame[8]+(frame[9]<<8))*0.07;
-  // mean power during one minute
-  rec->watts =   rec->amps * volt;
-  // -> we must devide by 60 to convert into ah and wh
-  rec->ah =      rec->amps/60;
-  rec->wh =      rec->watts/60;
+  rec->addr       = 0;
   rec->isLiveData = (frame[0] == FRAME_ID_LIVE)? true:false;
+  rec->year       =  frame[1]+2000;
+  // upper 4bit maybe is used for something other than month
+  rec->unknown    = (frame[2] >> 4) & 0x0f;
+  rec->month      =  frame[2]       & 0x0f;
+  rec->day        =  frame[3];
+  rec->hour       =  frame[4];
+  rec->min        =  frame[5];
+  rec->cost       = (frame[6]+(frame[7]<<8))/100.0;
+  // mean intensity during one minute
+  rec->amps       = (frame[8]+(frame[9]<<8))*0.07;
+  // mean power during one minute
+  rec->watts      = rec->amps * volt;
+  // we must devide by 60 to convert into ah and wh
+  rec->ah         = rec->amps/60;
+  rec->wh         = rec->watts/60;
 
   time_t     now;
   struct tm  ts;
@@ -129,7 +129,7 @@ static void decode_frame(unsigned char *frame, struct record_data *rec)
   printf("\t%s\t%04d/%02d/%02d %02d:%02d %.2fA %.2fW %d\t",
 	 buf, rec->year, rec->month, rec->day, rec->hour, rec->min, rec->amps, rec->watts, rec->unknown);
   int i = 0;
-  for (i = 0; i < 10; i++) {
+  for (i = 0; i < 10 ; i++) {
     printf("%03d ", frame[i]);
   }
   printf("\n");
