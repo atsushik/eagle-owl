@@ -64,9 +64,9 @@ static void process_live_data(struct record_data *rec)
   double w = rec->watts;
 
   if(!rec->isLiveData) { // special case: update only the time 
-      if(_watts == -1)
-	return;
-      w = _watts;
+    if(_watts == -1)
+      return;
+    w = _watts;
   }
   else {
     _watts = w;
@@ -74,18 +74,18 @@ static void process_live_data(struct record_data *rec)
 
   FILE *fp =  fopen(".live", "w");
   if(fp && rec->hour!=255) { // to avoid writing strange values (i.e. date 2255, hour 255:255) that sometimes I got
-      time_t     now;
-      struct tm  ts;
-      char       buf[80];
-      // Get current time
-      time(&now);
-      // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
-      ts = *localtime(&now);
-      strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
-      fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\"}", 
-	      buf, rec->year, (rec->month)+1, rec->day, rec->hour, rec->min, w);
-      fclose(fp);
-    }
+    time_t     now;
+    struct tm  ts;
+    char       buf[80];
+    // Get current time
+    time(&now);
+    // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
+    ts = *localtime(&now);
+    strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
+    fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.0f\", \"dataType\":\"live\"}", 
+	    buf, rec->year, (rec->month), rec->day, rec->hour, rec->min, w);
+    fclose(fp);
+  }
 }
 
 static void decode_frame(unsigned char *frame, struct record_data *rec)
@@ -96,7 +96,7 @@ static void decode_frame(unsigned char *frame, struct record_data *rec)
   rec->addr       = 0;
   rec->isLiveData = (frame[0] == FRAME_ID_LIVE)? true:false;
   rec->year       =  frame[1]+2000;
-  // upper 4bit maybe is used for something other than month
+  // upper 4bit seems to be used for something other than month
   rec->unknown    = (frame[2] >> 4) & 0x0f;
   rec->month      =  frame[2]       & 0x0f;
   rec->day        =  frame[3];
@@ -131,8 +131,29 @@ static void decode_frame(unsigned char *frame, struct record_data *rec)
     printf("%03d ", frame[i]);
   }
   printf("\n");
+
+  if (rec->amps == 0) {
+    return;
+  }
+
+  FILE *fp =  fopen(".hist", "w");
+  if(fp) { 
+    time_t     now;
+    struct tm  ts;
+    char       buf[80];
+    // Get current time
+    time(&now);
+    // Format time, "ddd yyyy-mm-dd hh:mm:ss zzz"
+    ts = *localtime(&now);
+    strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &ts);
+    fprintf(fp, "{\"timestamp\":\"%s\",\"datetime\":\"%04d/%02d/%02d %02d:%02d\", \"consumption current[W]\":\"%.2f\"}", 
+	    buf, rec->year, (rec->month), rec->day, rec->hour, rec->min, rec->watts);
+    fclose(fp);
+  }
+
 }
 
+/*
 // Insert history into DB worker thread
 void insert_db_history(void *data)
 {
@@ -161,7 +182,7 @@ void insert_db_history(void *data)
   printf("update db in %4.2f seconds\n", 
          (clock() - cStartClock) / (double)CLOCKS_PER_SEC);
 }
-
+*/
 bool receive_history = true;
 int frame_id = 0;
 static int process_frame(int dev_id, unsigned char *frame)
@@ -204,11 +225,6 @@ static int process_frame(int dev_id, unsigned char *frame)
     struct record_data rec;
     decode_frame(frame, &rec);
 
-    if(rec.month < 0 || rec.month > 12)
-      rec.month = last_valid_month;
-    else
-      last_valid_month = rec.month;
-
     if(frame[0]==FRAME_ID_DB) {
       if(receive_history && frame_id < HISTORY_SIZE) {
         if(frame_id == 0)
@@ -220,16 +236,20 @@ static int process_frame(int dev_id, unsigned char *frame)
           printf("\r %.1f%%", min(100, 100*((double)frame_id/(31*24*60))));
           fflush(stdout);
         }
+	/*
         // cache the history in a buffer, we will insert it in the db later.
         memcpy(history[frame_id++], frame, 11);
+	*/
       }
+      /*
       else {
-        db_insert_hist(&rec);
-        db_update_status();
+        #db_insert_hist(&rec);
+        #db_update_status();
         process_live_data(&rec); // the record is not live data, but we do that to
                                  // update the time in the .live file
                                  // (the cm160 send a DB frame when a new minute starts)
       }
+      */
     }
     else
       {
@@ -240,8 +260,8 @@ static int process_frame(int dev_id, unsigned char *frame)
 	  fflush(stdout);
 	  receive_history = false;
 	  // Now, insert the history into the db
-	  pthread_t thread;
-	  pthread_create(&thread, NULL, (void *)&insert_db_history, (void *)frame_id);
+	  //pthread_t thread;
+	  //pthread_create(&thread, NULL, (void *)&insert_db_history, (void *)frame_id);
 	}
       
 	process_live_data(&rec);
@@ -333,7 +353,7 @@ int main(int argc, char **argv)
     demonize(argv[0]);
 
   while(1) {
-    db_open();
+    //db_open();
     dev_cnt = 0;
     receive_history = true;
     frame_id = 0;
@@ -345,12 +365,12 @@ int main(int argc, char **argv)
     // Only 1 device supported
     if(!(g_devices[0].hdev = usb_open(g_devices[0].usb_dev))) {
       fprintf(stderr, "failed to open device\n");
-      db_close();
+      //db_close();
       break;
     }
     handle_device(0); 
     usb_close(g_devices[0].hdev);
-    db_close();
+    //db_close();
   }
   
   return 0;

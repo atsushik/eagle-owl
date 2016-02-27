@@ -21,7 +21,7 @@
 
 #ifndef __DB_H__
 #define __DB_H__
-#include <sqlite3.h> 
+//#include <sqlite3.h> 
 
 struct record_data {
   int addr;
@@ -40,6 +40,7 @@ struct record_data {
   int unknown;
 };
 
+/*
 int db_open(void);
 void db_close(void);
 int db_begin_transaction(void);
@@ -49,5 +50,5 @@ int db_update_status(void);
 
 void update_stat(sqlite3_context *context, int argc, sqlite3_value **argv);
 int update_stat_db(int y, int m, int d, int h, double kwh);
-
+*/
 #endif // __DB_H__

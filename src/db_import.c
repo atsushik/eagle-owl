@@ -24,7 +24,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
-#include <sqlite3.h>
+//#include <sqlite3.h>
 
 #include "db.h"
 #include "sql_cmd.h"
@@ -83,6 +83,7 @@ static bool is_present(char *name, char table[][256], int size)
   return false;
 }
 
+/*
 static bool validate_imported_db(sqlite3* imp_db)
 {
   char sql[] = LIST_TABLES;
@@ -178,7 +179,7 @@ static int import_db(sqlite3 **imp_db)
   db_end_transaction();
   return ret;
 }
-
+*/
 static void print_help(char *prog_name)
 {
   printf("Usage:\n");

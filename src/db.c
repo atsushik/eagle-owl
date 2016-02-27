@@ -22,15 +22,15 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <sqlite3.h> 
+//#include <sqlite3.h> 
 #include "db.h"
 #include "sql_cmd.h"
 
 #define EAGLE_OWL_DB 		"eagleowl.db"
 #define EAGLE_OWL_STAT_DB 	"eagleowl_stat.db"
 
-static sqlite3 *db = NULL;
-static sqlite3 *stat_db = NULL;
+//static sqlite3 *db = NULL;
+//static sqlite3 *stat_db = NULL;
 
 // Returns the day of the week: 0 = monday ... 6 = sunday
 static inline int get_day_of_week(int y, int m, int d)
@@ -45,6 +45,7 @@ static inline bool is_full_tariff(int hour)
   return (hour >= 8 && hour < 23)?true:false;
 }
 
+/*
 // Create eagleowl_db (same format as the one from OWL)
 static int create_main_db()
 {
@@ -256,3 +257,4 @@ int db_update_status(void)
   return SQLITE_OK;
 }
 
+*/
